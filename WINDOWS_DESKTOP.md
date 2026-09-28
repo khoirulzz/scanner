@@ -57,4 +57,4 @@ Uninstall aplikasi tidak menghapus database operator secara otomatis.
 
 Pembacaan PDF KK selectable tetap lokal. `ENABLE_VISION_FALLBACK` default `false`, sehingga launcher desktop tidak membutuhkan API AI untuk alur PDF normal.
 
-Jika Vision ingin dipakai, konfigurasi provider/API key harus ditambahkan dengan mekanisme konfigurasi yang aman; jangan hard-code key ke executable atau repository.
+Jika Vision AI ingin dipakai, konfigurasi provider/API key harus ditambahkan dengan mekanisme konfigurasi yang aman; jangan hard-code key ke executable atau repository.
