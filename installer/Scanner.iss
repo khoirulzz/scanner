@@ -176,11 +176,10 @@ begin
   Result := InstallWebView2IfNeeded();
 end;
 
-function CancelButtonClick(CurPageID: Integer): Boolean;
+procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
 begin
   if SetupCompleted then
   begin
-    Result := True;
     Exit;
   end;
 
@@ -192,16 +191,18 @@ begin
       mbInformation,
       MB_OK
     );
-    Result := False;
+    Cancel := False;
+    Confirm := False;
     Exit;
   end;
 
-  Result := MsgBox(
+  Cancel := MsgBox(
     'Instalasi KK Scanner belum selesai.' + #13#10 + #13#10 +
     'Jika ditutup sekarang, aplikasi mungkin belum terpasang dengan benar. Tetap batalkan instalasi?',
     mbConfirmation,
     MB_YESNO
   ) = IDYES;
+  Confirm := False;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
