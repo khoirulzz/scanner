@@ -38,8 +38,8 @@ Name: "desktopicon"; Description: "Buat shortcut di Desktop"; GroupDescription: 
 Source: "..\dist\KK Scanner\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\KK Scanner"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\KK Scanner"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\KK Scanner"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; IconIndex: 0; AppUserModelID: "Nalaro.KKScanner"
+Name: "{autodesktop}\KK Scanner"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; IconIndex: 0; AppUserModelID: "Nalaro.KKScanner"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Jalankan KK Scanner"; Flags: nowait postinstall skipifsilent

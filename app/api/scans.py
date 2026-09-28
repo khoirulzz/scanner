@@ -51,16 +51,20 @@ def _existing_document(db, file_hash, item_id):
 def _existing_household(db, no_kk, item_id):
     return db.scalar(select(ScanItem.id).join(ScanItem.kk_record).where(KKRecord.no_kk == no_kk, ScanItem.id != item_id, ScanItem.status.in_(('EXTRACTED','REVIEW_REQUIRED','APPROVED'))).limit(1))
 
+def _fail_preflight(db, item, code, size):
+    attempt=ScanAttempt(scan_item_id=item.id,attempt_number=len(item.attempts)+1,provider='validation',model='upload-preflight',status='FAILED',processing_ms=0,failure_code=code,completed_at=utcnow())
+    db.add(attempt); db.flush(); item.current_attempt_id=attempt.id; item.status='FAILED'; item.failure_code=code; item.failure_message=ERROR_MESSAGES[code]; item.original_size=size; item.optimized_size=size; db.commit(); safe_scan_log(scan_id=item.id,status='FAILED',provider='validation',model='upload-preflight',processing_ms=0,failure_code=code); return _serialize(_load(db,item.id))
+
 async def _process(item_id,file,db):
     settings=get_settings(); item=_load(db,item_id)
     if not item: raise HTTPException(404,'Scan item tidak ditemukan.')
     data=await file.read(max(settings.max_upload_bytes,settings.max_pdf_upload_bytes)+1)
     mime_type=_detect_mime(data)
-    if not mime_type: raise HTTPException(415,ERROR_MESSAGES['UNSUPPORTED_FORMAT'])
+    if not mime_type: return _fail_preflight(db,item,'UNSUPPORTED_FORMAT',len(data))
     max_bytes=settings.max_pdf_upload_bytes if mime_type=='application/pdf' else settings.max_upload_bytes
     if len(data)>max_bytes:
         code='PDF_TOO_LARGE' if mime_type=='application/pdf' else 'FILE_TOO_LARGE'
-        raise HTTPException(413,ERROR_MESSAGES[code])
+        return _fail_preflight(db,item,code,len(data))
     file_digest=hash_file(data)
     if _existing_document(db, file_digest, item.id):
         item.file_hash=file_digest; item.original_size=len(data); item.optimized_size=len(data); item.status='FAILED'; item.failure_code='DUPLICATE_DOCUMENT'; item.failure_message=ERROR_MESSAGES['DUPLICATE_DOCUMENT']; db.commit(); return _serialize(_load(db,item.id))
@@ -86,7 +90,11 @@ async def _process(item_id,file,db):
         db.rollback(); item=_load(db,item_id); attempt=db.get(ScanAttempt,attempt.id); item.status='FAILED'; item.failure_code='PROCESSING_FAILED'; item.failure_message=ERROR_MESSAGES['PROCESSING_FAILED']; attempt.status='FAILED'; attempt.failure_code='PROCESSING_FAILED'; attempt.completed_at=utcnow(); attempt.processing_ms=int((time.perf_counter()-started)*1000); db.commit(); safe_scan_log(scan_id=item.id,status='FAILED',provider=provider_name,model=model_name,processing_ms=attempt.processing_ms,failure_code='PROCESSING_FAILED'); return _serialize(_load(db,item.id))
 
 @router.post('/scan-items/{item_id}/process',dependencies=[Depends(csrf_required)])
-async def process_item(item_id:str,file:UploadFile=File(...),db:Session=Depends(get_db)): return await _process(item_id,file,db)
+async def process_item(item_id:str,file:UploadFile=File(...),db:Session=Depends(get_db)):
+    item=_load(db,item_id)
+    if not item: raise HTTPException(404,'Scan item tidak ditemukan.')
+    if item.status in {'EXTRACTED','REVIEW_REQUIRED','APPROVED','FAILED'}: return _serialize(item)
+    return await _process(item_id,file,db)
 @router.post('/scan-items/{item_id}/retry',dependencies=[Depends(csrf_required)])
 async def retry_item(item_id:str,file:UploadFile=File(...),db:Session=Depends(get_db)): return await _process(item_id,file,db)
 @router.get('/scan-items/{item_id}',dependencies=[Depends(admin_required)])

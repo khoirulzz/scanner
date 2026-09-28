@@ -14,5 +14,8 @@
   <div id="queueList"></div>
 </section>
 <section id="resume" class="card hidden"><div class="row"><div><h2>Antrean belum selesai</h2><p>PDF masih tersedia di browser ini dan dapat dilanjutkan.</p></div><button id="resumeBtn" type="button">Lanjutkan</button></div></section>
+<section id="batchOutcome" class="card batch-outcome hidden" aria-live="polite">
+  <div class="row"><div><h2 id="outcomeTitle">Hasil batch</h2><p id="outcomeSummary"></p></div><div id="outcomeLinks" class="button-row"></div></div>
+</section>
 {% endblock %}
 {% block scripts %}<script src="/static/js/indexed-db.js"></script><script src="/static/js/image-preprocessor.js"></script><script src="/static/js/batch-queue.js"></script>{% endblock %}

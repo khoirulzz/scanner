@@ -214,3 +214,26 @@ def test_unexpected_parser_error_marks_item_failed(monkeypatch):
         assert attempt.status == 'FAILED'
     finally:
         session.close()
+
+
+def test_invalid_upload_is_terminal_and_records_preflight_attempt():
+    session, item_id = _scan_session()
+    try:
+        result = asyncio.run(scans._process(item_id, UploadFile(file=BytesIO(b'not a supported document'), filename='invalid.pdf'), session))
+        assert (result['status'], result['failure_code']) == ('FAILED', 'UNSUPPORTED_FORMAT')
+        attempt = session.scalar(select(ScanAttempt).where(ScanAttempt.scan_item_id == item_id))
+        assert (attempt.status, attempt.provider, attempt.model) == ('FAILED', 'validation', 'upload-preflight')
+    finally:
+        session.close()
+
+
+def test_process_endpoint_is_idempotent_after_terminal_result():
+    session, item_id = _scan_session()
+    try:
+        first = asyncio.run(scans._process(item_id, UploadFile(file=BytesIO(synthetic_kk_pdf()), filename='synthetic.pdf'), session))
+        repeated = asyncio.run(scans.process_item(item_id, UploadFile(file=BytesIO(b'not the original PDF'), filename='synthetic.pdf'), session))
+        attempts = session.scalars(select(ScanAttempt).where(ScanAttempt.scan_item_id == item_id)).all()
+        assert repeated['status'] == first['status'] == 'EXTRACTED'
+        assert len(attempts) == 1
+    finally:
+        session.close()

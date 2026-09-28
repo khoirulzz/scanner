@@ -8,6 +8,7 @@ Set-Location $PSScriptRoot
 
 Write-Host "== KK Scanner Windows build =="
 Write-Host "Version: $Version"
+$env:KK_SCANNER_VERSION = $Version
 
 $iconPath = Join-Path $PSScriptRoot "assets\scanner.ico"
 if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) {
@@ -24,6 +25,7 @@ python -m pip install -r requirements-build.txt
 
 if (-not $SkipTests) {
     python -m pytest -q
+    node --test tests/js/batch-queue.test.mjs
 }
 
 Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue

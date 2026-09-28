@@ -3,7 +3,6 @@ import ctypes
 import json
 import os
 import secrets
-import socket
 import sys
 import threading
 import time
@@ -11,10 +10,10 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
-import uvicorn
-import webview
-
 HOST = '127.0.0.1'
+APP_PORT = 52616
+APP_USER_MODEL_ID = 'Nalaro.KKScanner'
+INSTANCE_MUTEX_NAME = 'Local\\Nalaro.KKScanner'
 STARTUP_TIMEOUT_SECONDS = 25
 
 
@@ -76,21 +75,44 @@ def _configure_environment(root: Path) -> None:
     os.environ.setdefault('MAX_BATCH_ITEMS', '50')
 
 
-def _find_free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind((HOST, 0))
-        return int(sock.getsockname()[1])
+def _set_windows_app_identity() -> None:
+    if sys.platform == 'win32':
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+
+
+def _acquire_single_instance():
+    if sys.platform != 'win32':
+        return object()
+    kernel32 = ctypes.windll.kernel32
+    kernel32.CreateMutexW.argtypes = (ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p)
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
+    kernel32.CloseHandle.restype = ctypes.c_bool
+    handle = kernel32.CreateMutexW(None, False, INSTANCE_MUTEX_NAME)
+    if not handle:
+        raise ctypes.WinError()
+    if kernel32.GetLastError() == 183:
+        kernel32.CloseHandle(handle)
+        return None
+    return handle
+
+
+def _release_single_instance(handle) -> None:
+    if sys.platform == 'win32' and handle:
+        ctypes.windll.kernel32.CloseHandle(handle)
 
 
 class ScannerServer(threading.Thread):
     def __init__(self, port: int):
         super().__init__(name='kk-scanner-server', daemon=True)
         self.port = port
-        self.server: uvicorn.Server | None = None
+        self.server = None
         self.error: Exception | None = None
 
     def run(self) -> None:
         try:
+            import uvicorn
+
             from app.main import app
 
             config = uvicorn.Config(
@@ -102,8 +124,8 @@ class ScannerServer(threading.Thread):
             )
             self.server = uvicorn.Server(config)
             self.server.run()
-        except Exception as exc:
-            self.error = exc
+        except BaseException as exc:
+            self.error = RuntimeError(str(exc) or exc.__class__.__name__)
 
     def stop(self) -> None:
         if self.server is not None:
@@ -117,9 +139,11 @@ def _wait_until_ready(server: ScannerServer) -> bool:
     while time.monotonic() < deadline:
         if server.error is not None:
             return False
+        if not server.is_alive():
+            return False
         try:
             with urlopen(health_url, timeout=1) as response:
-                if response.status == 200:
+                if response.status == 200 and server.server is not None and server.server.started:
                     return True
         except (URLError, TimeoutError, OSError):
             pass
@@ -133,6 +157,13 @@ def _show_error(message: str) -> None:
         ctypes.windll.user32.MessageBoxW(0, message, 'KK Scanner', 0x10)
     else:
         print(message, file=sys.stderr)
+
+
+def _show_info(message: str) -> None:
+    if sys.platform == 'win32':
+        ctypes.windll.user32.MessageBoxW(0, message, 'KK Scanner', 0x40)
+    else:
+        print(message)
 
 
 def _splash_html() -> str:
@@ -210,20 +241,12 @@ class RuntimeState:
         self.server: ScannerServer | None = None
 
 
-def _bootstrap(window, root: Path, state: RuntimeState) -> None:
+def _bootstrap(window, state: RuntimeState) -> None:
     try:
-        _set_status(window, 'Menyiapkan penyimpanan lokal...', 'Memeriksa folder data dan konfigurasi.')
-        _configure_environment(root)
-
-        _set_status(window, 'Menyiapkan layanan scanner...', 'Mencari port lokal yang tersedia.')
-        port = _find_free_port()
-
-        _set_status(window, 'Menyalakan server lokal...', 'Memuat komponen pemrosesan dokumen.')
-        server = ScannerServer(port)
-        state.server = server
-        server.start()
-
         _set_status(window, 'Memeriksa database...', 'Menunggu layanan lokal siap digunakan.')
+        server = state.server
+        if server is None:
+            raise RuntimeError('Server lokal belum dijalankan.')
         if not _wait_until_ready(server):
             server.stop()
             detail = str(server.error) if server.error else 'Layanan lokal tidak merespons dalam batas waktu.'
@@ -235,8 +258,7 @@ def _bootstrap(window, root: Path, state: RuntimeState) -> None:
             return
 
         _set_status(window, 'Membuka KK Scanner...', 'Semua komponen siap.')
-        time.sleep(0.18)
-        window.load_url(f'http://{HOST}:{port}/')
+        window.load_url(f'http://{HOST}:{server.port}/')
     except Exception as exc:
         if state.server is not None:
             state.server.stop()
@@ -248,28 +270,41 @@ def _bootstrap(window, root: Path, state: RuntimeState) -> None:
 
 
 def main() -> int:
-    root = _data_root()
-    state = RuntimeState()
-
-    webview.settings['ALLOW_DOWNLOADS'] = True
-    webview.settings['OPEN_EXTERNAL_LINKS_IN_BROWSER'] = True
-
-    window = webview.create_window(
-        'KK Scanner',
-        html=_splash_html(),
-        width=1366,
-        height=820,
-        min_size=(1024, 650),
-        resizable=True,
-        text_select=True,
-        background_color='#F4F7FB',
-    )
-
-    icon_path = _icon_path()
     try:
+        mutex_handle = _acquire_single_instance()
+    except Exception as exc:
+        _show_error(f'KK Scanner tidak dapat memeriksa instance aplikasi.\n\nDetail: {exc}')
+        return 1
+    if mutex_handle is None:
+        _show_info('KK Scanner sudah berjalan. Gunakan jendela aplikasi yang sedang terbuka.')
+        return 0
+
+    state = RuntimeState()
+    try:
+        root = _data_root()
+        _configure_environment(root)
+        _set_windows_app_identity()
+        state.server = ScannerServer(APP_PORT)
+        state.server.start()
+
+        import webview
+
+        webview.settings['ALLOW_DOWNLOADS'] = True
+        webview.settings['OPEN_EXTERNAL_LINKS_IN_BROWSER'] = True
+        window = webview.create_window(
+            'KK Scanner',
+            html=_splash_html(),
+            width=1366,
+            height=820,
+            min_size=(1024, 650),
+            resizable=True,
+            text_select=True,
+            background_color='#F4F7FB',
+        )
+        icon_path = _icon_path()
         webview.start(
             _bootstrap,
-            (window, root, state),
+            (window, state),
             debug=False,
             private_mode=False,
             storage_path=str(root / 'webview'),
@@ -286,6 +321,7 @@ def main() -> int:
         if state.server is not None:
             state.server.stop()
             state.server.join(timeout=10)
+        _release_single_instance(mutex_handle)
 
     return 0
 
