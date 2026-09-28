@@ -143,7 +143,11 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
 @app.get('/scan')
 def scan_page(request: Request):
     require_admin(request)
-    return templates.TemplateResponse(request, 'scan.html', ctx(request))
+    return templates.TemplateResponse(
+        request,
+        'scan.html',
+        ctx(request, max_batch_items=settings.max_batch_items),
+    )
 
 
 @app.get('/batches')

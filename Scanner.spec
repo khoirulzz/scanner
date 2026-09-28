@@ -4,6 +4,8 @@ from PyInstaller.utils.hooks import collect_submodules
 
 ROOT = Path.cwd()
 ICON_PATH = ROOT / 'assets' / 'scanner.ico'
+if not ICON_PATH.is_file():
+    raise FileNotFoundError(f'Ikon aplikasi wajib tersedia: {ICON_PATH}')
 
 hiddenimports = []
 hiddenimports += collect_submodules('uvicorn')
@@ -13,9 +15,8 @@ datas = [
     ('app/static', 'app/static'),
     ('app/templates', 'app/templates'),
     ('app/layouts', 'app/layouts'),
+    (str(ICON_PATH), 'assets'),
 ]
-if ICON_PATH.exists():
-    datas.append((str(ICON_PATH), 'assets'))
 
 analysis_excludes = [
     'PyQt5', 'PyQt6', 'PySide2', 'PySide6',
@@ -42,10 +43,6 @@ a = Analysis(
 
 pyz = PYZ(a.pure)
 
-exe_options = {}
-if ICON_PATH.exists():
-    exe_options['icon'] = str(ICON_PATH)
-
 exe = EXE(
     pyz,
     a.scripts,
@@ -58,7 +55,7 @@ exe = EXE(
     upx=True,
     console=False,
     disable_windowed_traceback=False,
-    **exe_options,
+    icon=str(ICON_PATH),
 )
 
 coll = COLLECT(

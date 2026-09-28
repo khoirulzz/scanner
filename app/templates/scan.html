@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
 {% block content %}
 <header><div><small>IMPOR</small><h1>Tambah KK</h1><p>PDF dengan teks yang dapat dipilih.</p></div></header>
-<section class="upload pdf-drop-zone" id="pdfDropZone" role="button" tabindex="0" aria-describedby="uploadHint">
+<section class="upload pdf-drop-zone" id="pdfDropZone" data-max-batch-items="{{ max_batch_items }}" role="button" tabindex="0" aria-describedby="uploadHint">
   <div class="drop-icon" aria-hidden="true">⇩</div>
   <h2>Tarik PDF ke sini</h2>
-  <p id="uploadHint" aria-live="polite">Maksimal 20 PDF, masing-masing 8 MB.</p>
+  <p id="uploadHint" aria-live="polite">Maksimal {{ max_batch_items }} PDF, masing-masing 8 MB.</p>
   <button class="primary" id="galleryBtn" type="button">Pilih PDF</button>
   <input hidden id="galleryInput" type="file" accept="application/pdf,.pdf" multiple>
 </section>

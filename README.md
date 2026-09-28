@@ -25,7 +25,7 @@ Prinsip ekstraksi adalah **TRANSCRIBE ONLY**: jangan menebak karakter, jangan me
 
 - Admin login berbasis environment variable dan session HTTP-only.
 - CSRF protection dan basic rate limiting.
-- Single/batch maksimal 20 PDF, sequential.
+- Single/batch maksimal 50 PDF, tetap diproses sequential agar beban lokal terkendali.
 - IndexedDB queue tanpa menyimpan PDF di server.
 - Validasi magic-byte, ukuran, satu halaman, PDF terkunci, dan teks selectable.
 - Ekstraksi native PyMuPDF berdasarkan objek teks dan koordinat tabel.
@@ -36,6 +36,10 @@ Prinsip ekstraksi adalah **TRANSCRIBE ONLY**: jangan menebak karakter, jangan me
 - Manual edit dan approval ulang dengan deterministic validation.
 - XLSX SID 28 kolom; NIK/No KK sebagai string, RT/RW 3 digit, tanggal `dd-mm-yyyy`.
 - Dashboard, batch history, data search, export history, `/healthz`.
+
+## Batch lokal
+
+Batch lokal menerima hingga 50 PDF (maksimum 8 MB per PDF). Dokumen tetap diproses satu per satu dan antrean disimpan ke IndexedDB agar penggunaan memori aktif tetap kecil serta proses dapat dilanjutkan setelah gangguan.
 
 ## Local development
 

@@ -1,1 +1,42 @@
-const QueueDB=(()=>{const DB='kk-scanner-v1',STORE='queue';function open(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(STORE))r.result.createObjectStore(STORE,{keyPath:'id'})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}async function tx(mode,fn){const db=await open();return new Promise((resolve,reject)=>{const t=db.transaction(STORE,mode);fn(t.objectStore(STORE));t.oncomplete=()=>{db.close();resolve()};t.onerror=()=>reject(t.error)})}return{put:x=>tx('readwrite',s=>s.put(x)),remove:id=>tx('readwrite',s=>s.delete(id)),all:async()=>{const db=await open();return new Promise((resolve,reject)=>{const r=db.transaction(STORE,'readonly').objectStore(STORE).getAll();r.onsuccess=()=>resolve(r.result||[]);r.onerror=()=>reject(r.error)})}}})();
+const QueueDB=(()=>{
+  const DB='kk-scanner-v1';
+  const STORE='queue';
+
+  function open(){
+    return new Promise((resolve,reject)=>{
+      const request=indexedDB.open(DB,1);
+      request.onupgradeneeded=()=>{
+        if(!request.result.objectStoreNames.contains(STORE))request.result.createObjectStore(STORE,{keyPath:'id'});
+      };
+      request.onsuccess=()=>resolve(request.result);
+      request.onerror=()=>reject(request.error);
+    });
+  }
+
+  async function write(operation){
+    const db=await open();
+    return new Promise((resolve,reject)=>{
+      const transaction=db.transaction(STORE,'readwrite');
+      operation(transaction.objectStore(STORE));
+      transaction.oncomplete=()=>{db.close();resolve();};
+      transaction.onerror=()=>{db.close();reject(transaction.error);};
+      transaction.onabort=()=>{db.close();reject(transaction.error);};
+    });
+  }
+
+  async function read(requestFactory){
+    const db=await open();
+    return new Promise((resolve,reject)=>{
+      const request=requestFactory(db.transaction(STORE,'readonly').objectStore(STORE));
+      request.onsuccess=()=>{db.close();resolve(request.result);};
+      request.onerror=()=>{db.close();reject(request.error);};
+    });
+  }
+
+  return {
+    put:record=>write(store=>store.put(record)),
+    get:id=>read(store=>store.get(id)),
+    ids:()=>read(store=>store.getAllKeys()),
+    remove:id=>write(store=>store.delete(id)),
+  };
+})();

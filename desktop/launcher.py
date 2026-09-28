@@ -73,6 +73,7 @@ def _configure_environment(root: Path) -> None:
     os.environ['DATABASE_URL'] = f"sqlite:///{database_file.as_posix()}"
     os.environ['SECRET_KEY'] = _load_or_create_secret(root)
     os.environ.setdefault('ENABLE_VISION_FALLBACK', 'false')
+    os.environ.setdefault('MAX_BATCH_ITEMS', '50')
 
 
 def _find_free_port() -> int:

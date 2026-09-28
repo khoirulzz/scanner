@@ -26,9 +26,7 @@ UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 CloseApplications=yes
 RestartApplications=no
-#if FileExists(MyIconFile)
 SetupIconFile={#MyIconFile}
-#endif
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

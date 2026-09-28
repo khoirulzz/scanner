@@ -9,6 +9,16 @@ Set-Location $PSScriptRoot
 Write-Host "== KK Scanner Windows build =="
 Write-Host "Version: $Version"
 
+$iconPath = Join-Path $PSScriptRoot "assets\scanner.ico"
+if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) {
+    throw "Ikon wajib tidak ditemukan: $iconPath"
+}
+
+$iconBytes = [System.IO.File]::ReadAllBytes($iconPath)
+if ($iconBytes.Length -lt 6 -or $iconBytes[0] -ne 0 -or $iconBytes[1] -ne 0 -or $iconBytes[2] -ne 1 -or $iconBytes[3] -ne 0) {
+    throw "assets\scanner.ico bukan file ICO Windows yang valid."
+}
+
 python -m pip install --upgrade pip
 python -m pip install -r requirements-build.txt
 
@@ -49,4 +59,9 @@ if (-not $installer) {
     throw "Installer tidak ditemukan setelah kompilasi Inno Setup."
 }
 
+$checksum = Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256
+$checksumPath = "$($installer.FullName).sha256"
+"$($checksum.Hash.ToLowerInvariant())  $($installer.Name)" | Set-Content -LiteralPath $checksumPath -Encoding ascii
+
 Write-Host "Installer siap: $($installer.FullName)"
+Write-Host "Checksum SHA-256: $checksumPath"

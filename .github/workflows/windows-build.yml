@@ -40,7 +40,7 @@ jobs:
           if ($requested) {
             $version = $requested
           } elseif ("${{ github.ref }}" -like "refs/tags/v*") {
-            $version = "${{ github.ref_name }}"
+            $version = "${{ github.ref_name }}" -replace '^v', ''
           } else {
             $version = "0.1.${{ github.run_number }}"
           }
@@ -69,7 +69,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: KK-Scanner-Setup-${{ env.APP_VERSION }}
-          path: installer/output/KK-Scanner-Setup-*.exe
+          path: |
+            installer/output/KK-Scanner-Setup-*.exe
+            installer/output/KK-Scanner-Setup-*.exe.sha256
           if-no-files-found: error
           retention-days: 30
 
@@ -95,12 +97,14 @@ jobs:
           echo "" >> RELEASE_NOTES.md
           echo "## Details" >> RELEASE_NOTES.md
           echo "- Windows installer build generated automatically from GitHub Actions." >> RELEASE_NOTES.md
-          echo "- Artifact attached directly to this GitHub Release." >> RELEASE_NOTES.md
+          echo "- Installer and its SHA-256 checksum are attached directly to this GitHub Release." >> RELEASE_NOTES.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*.exe
+          files: |
+            artifacts/**/*.exe
+            artifacts/**/*.sha256
           body_path: RELEASE_NOTES.md
           draft: false
           prerelease: false

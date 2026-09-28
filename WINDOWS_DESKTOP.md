@@ -66,13 +66,13 @@ PyInstaller menggunakan mode `onedir`, lalu Inno Setup membungkus folder hasil b
 
 ## Ikon aplikasi
 
-Upload file berikut ke repository:
+File berikut wajib ada di repository:
 
 ```text
 assets/scanner.ico
 ```
 
-Build tetap berjalan tanpa file tersebut. Jika file tersedia, `Scanner.spec` dan `Scanner.iss` otomatis menggunakannya.
+Build akan berhenti bila file ini tidak ada atau bukan ICO Windows yang valid. `Scanner.spec` memasukkannya ke executable dan splash, sedangkan `Scanner.iss` memasukkannya ke installer serta shortcut.
 
 Spesifikasi rekomendasi:
 
@@ -97,6 +97,21 @@ Data operasional tetap berada di:
 ```
 
 Uninstall aplikasi tidak menghapus database operator secara otomatis.
+
+## Batch lokal hingga 50 PDF
+
+Satu batch dapat memuat maksimal **50 PDF** (masing-masing hingga 8 MB). Dokumen tetap disimpan ke IndexedDB dan diproses **satu per satu**, sehingga hanya satu PDF yang dikirim dan diekstrak pada satu waktu. Sebelum batch dimulai, aplikasi memeriksa kapasitas penyimpanan lokal agar antrean tidak hilang ketika ruang disk tidak cukup.
+
+## GitHub Releases
+
+Workflow **Build Windows Installer** membuat artifact installer pada setiap push ke `main`. Untuk membuat GitHub Release beserta installer dan checksum SHA-256, buat lalu push tag versi semantik:
+
+```powershell
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+Tag `v*` menjalankan build Windows, kemudian otomatis mengunggah `KK-Scanner-Setup-<versi>.exe` dan file `.sha256` ke halaman **Releases** repository.
 
 ## Penghapusan hasil scan
 

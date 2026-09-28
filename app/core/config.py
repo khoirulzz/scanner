@@ -26,7 +26,9 @@ class Settings(BaseSettings):
     max_pdf_upload_bytes: int = Field(8 * 1024 * 1024, alias='MAX_PDF_UPLOAD_BYTES')
     max_pdf_pages: int = Field(1, alias='MAX_PDF_PAGES')
     min_pdf_text_characters: int = Field(80, alias='MIN_PDF_TEXT_CHARACTERS')
-    max_batch_items: int = Field(20, alias='MAX_BATCH_ITEMS')
+    # Desktop processing stays sequential, so 50 files do not create parallel
+    # PDF/AI workloads. Keep this ceiling fixed to protect local storage.
+    max_batch_items: int = Field(50, ge=1, le=50, alias='MAX_BATCH_ITEMS')
     min_effective_width: int = Field(1600, alias='MIN_EFFECTIVE_WIDTH')
     thumbnail_long_edge: int = Field(360, alias='THUMBNAIL_LONG_EDGE')
 

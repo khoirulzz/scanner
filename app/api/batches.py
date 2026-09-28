@@ -39,8 +39,9 @@ def _batch(db, batch_id):
 
 @router.post('', dependencies=[Depends(csrf_required)])
 def create_batch(payload: BatchCreate, db: Session = Depends(get_db)):
-    if len(payload.filenames) > get_settings().max_batch_items:
-        raise HTTPException(422, 'Maksimal 20 dokumen per batch.')
+    max_batch_items = get_settings().max_batch_items
+    if len(payload.filenames) > max_batch_items:
+        raise HTTPException(422, f'Maksimal {max_batch_items} dokumen per batch.')
     today = datetime.now().strftime('%Y%m%d')
     existing = db.scalar(select(func.count()).select_from(ScanBatch).where(ScanBatch.batch_code.like(f'SCAN-{today}-%'))) or 0
     batch = ScanBatch(batch_code=f'SCAN-{today}-{existing + 1:04d}', status='QUEUED')
