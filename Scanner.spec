@@ -1,4 +1,9 @@
+from pathlib import Path
+
 from PyInstaller.utils.hooks import collect_submodules
+
+ROOT = Path.cwd()
+ICON_PATH = ROOT / 'assets' / 'scanner.ico'
 
 hiddenimports = []
 hiddenimports += collect_submodules('uvicorn')
@@ -8,6 +13,17 @@ datas = [
     ('app/static', 'app/static'),
     ('app/templates', 'app/templates'),
     ('app/layouts', 'app/layouts'),
+]
+if ICON_PATH.exists():
+    datas.append((str(ICON_PATH), 'assets'))
+
+analysis_excludes = [
+    'PyQt5', 'PyQt6', 'PySide2', 'PySide6',
+    'tkinter',
+    'pytest',
+    'alembic',
+    'psycopg', 'psycopg_binary', 'psycopg2',
+    'watchfiles', 'websockets',
 ]
 
 a = Analysis(
@@ -19,12 +35,16 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['PyQt5', 'PyQt6', 'PySide2', 'PySide6'],
+    excludes=analysis_excludes,
     noarchive=False,
-    optimize=0,
+    optimize=1,
 )
 
 pyz = PYZ(a.pure)
+
+exe_options = {}
+if ICON_PATH.exists():
+    exe_options['icon'] = str(ICON_PATH)
 
 exe = EXE(
     pyz,
@@ -38,6 +58,7 @@ exe = EXE(
     upx=True,
     console=False,
     disable_windowed_traceback=False,
+    **exe_options,
 )
 
 coll = COLLECT(

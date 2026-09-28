@@ -10,7 +10,7 @@ Write-Host "== KK Scanner Windows build =="
 Write-Host "Version: $Version"
 
 python -m pip install --upgrade pip
-python -m pip install -r requirements-desktop.txt
+python -m pip install -r requirements-build.txt
 
 if (-not $SkipTests) {
     python -m pytest -q

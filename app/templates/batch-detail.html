@@ -4,11 +4,11 @@
 <section class="stats batch-stats" id="batchSummary"></section>
 <section class="card batch-actions">
   <div><h2>Tindakan</h2><p id="batchActionHint"></p></div>
-  <div class="button-row"><a class="btn" id="reviewNext" href="#">Buka berikutnya</a><button class="primary" id="approveExtracted" type="button">Setujui semua yang valid</button><a class="btn" href="/exports">Excel</a></div>
+  <div class="button-row"><a class="btn" id="reviewNext" href="#">Buka berikutnya</a><button class="primary" id="approveExtracted" type="button">Setujui semua yang valid</button><a class="btn" href="/exports">Excel</a><button class="btn danger-ghost" id="deleteBatch" type="button">Hapus batch</button></div>
 </section>
 <section class="card">
   <div class="row batch-filter-row"><h2>Dokumen</h2><div class="filter-tabs" id="batchFilters"><button class="active" data-filter="">Semua</button><button data-filter="EXTRACTED">Siap disetujui</button><button data-filter="REVIEW_REQUIRED">Perlu review</button><button data-filter="FAILED">Gagal</button><button data-filter="APPROVED">Approved</button></div></div>
-  <div class="batch-list" id="batchList" data-batch-id="{{ batch.id }}"></div>
+  <div class="batch-list" id="batchList" data-batch-id="{{ batch.id }}" data-batch-code="{{ batch.batch_code }}"></div>
 </section>
 {% endblock %}
 {% block scripts %}<script src="/static/js/batch-detail.js"></script>{% endblock %}

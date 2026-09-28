@@ -11,7 +11,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.api import auth, batches, data, exports, scans
+from app.api import auth, batches, data, deletions, exports, scans
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.core.security import ensure_csrf_token, require_admin
@@ -83,7 +83,7 @@ async def security(request: Request, call_next):
     return response
 
 
-for router in (auth.router, batches.router, scans.router, data.router, exports.router):
+for router in (auth.router, batches.router, scans.router, data.router, exports.router, deletions.router):
     app.include_router(router)
 
 

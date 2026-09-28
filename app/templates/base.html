@@ -6,6 +6,7 @@
   <meta name="csrf-token" content="{{ csrf_token }}">
   <title>{% block title %}KK Scanner{% endblock %}</title>
   <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="stylesheet" href="/static/css/desktop-enhancements.css">
 </head>
 <body>
   <div class="shell">
@@ -22,7 +23,35 @@
     <main class="content">{% block content %}{% endblock %}</main>
   </div>
   <div id="toast" class="toast"></div>
-  <script>window.CSRF_TOKEN=document.querySelector('meta[name="csrf-token"]').content;</script>
+
+  <dialog id="confirmDialog" class="confirm-dialog">
+    <form method="dialog" class="confirm-dialog-card">
+      <div class="confirm-dialog-icon" aria-hidden="true">!</div>
+      <h2 id="confirmDialogTitle">Konfirmasi</h2>
+      <p id="confirmDialogMessage"></p>
+      <div class="confirm-dialog-actions">
+        <button value="cancel" type="submit">Batal</button>
+        <button value="confirm" class="danger" id="confirmDialogConfirm" type="submit">Hapus</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    window.CSRF_TOKEN=document.querySelector('meta[name="csrf-token"]').content;
+    window.showToast=(message)=>{const element=document.getElementById('toast');element.textContent=message;element.classList.add('show');setTimeout(()=>element.classList.remove('show'),2600)};
+    window.askDangerousAction=({title='Konfirmasi',message='',confirmLabel='Hapus'}={})=>{
+      const dialog=document.getElementById('confirmDialog');
+      if(!dialog||typeof dialog.showModal!=='function') return Promise.resolve(window.confirm(`${title}\n\n${message}`));
+      document.getElementById('confirmDialogTitle').textContent=title;
+      document.getElementById('confirmDialogMessage').textContent=message;
+      document.getElementById('confirmDialogConfirm').textContent=confirmLabel;
+      dialog.returnValue='';
+      return new Promise(resolve=>{
+        dialog.addEventListener('close',()=>resolve(dialog.returnValue==='confirm'),{once:true});
+        dialog.showModal();
+      });
+    };
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
