@@ -17,13 +17,26 @@ from app.services.pdf_extraction_service import extract_pdf_document
 from app.services.validation_service import validate_extraction
 
 
-def synthetic_kk_pdf(pages=1, include_text=True, missing_secondary_row=False, include_second_member=True):
+def _insert_centered(page, center_x, y, text, fontsize=6):
+    width = fitz.get_text_length(text, fontsize=fontsize)
+    page.insert_text((center_x - width / 2, y), text, fontsize=fontsize)
+
+
+def synthetic_kk_pdf(
+    pages=1, include_text=True, missing_secondary_row=False,
+    include_second_member=True, primary_edges=None, secondary_anchor_y=294,
+    first_marital_status='KAWIN TERCATAT', first_marriage_date='01-01-2000',
+    secondary_edges=None, draw_grid=False,
+):
     """Fictitious residents on the same landscape grid as the supplied blanko."""
     document = fitz.open()
     for _ in range(pages):
         page = document.new_page(width=841.9, height=595.3)
         if not include_text:
             continue
+        page_width = 841.9
+        primary_edges = primary_edges or [25, 202, 282, 324, 425, 467, 518, 640, 783, page_width]
+        secondary_edges = secondary_edges or [25, 109, 160, 257, 337, 402, 467, 640, page_width]
         header = [
             (280, 35, 'KARTU KELUARGA'), (250, 57, 'NO : 3311111111111111'),
             (120, 70, 'Nama Kepala Keluarga'), (227, 70, ': BUDI SANTOSO'),
@@ -39,31 +52,50 @@ def synthetic_kk_pdf(pages=1, include_text=True, missing_secondary_row=False, in
         ]
         for x, y, text in header:
             page.insert_text((x, y), text, fontsize=6)
-        primary = [
-            (16, '1'), (29, 'BUDI SANTOSO'), (206, '3311111111111112'),
-            (285, 'LAKI-LAKI'), (326, 'DEMAK'), (426, '01-01-1980'),
-            (468, 'ISLAM'), (521, 'SMA'), (642, 'PETANI'), (788, 'O'),
+        for number, (left, right) in enumerate(zip(primary_edges, primary_edges[1:]), start=1):
+            _insert_centered(page, (left + right) / 2, 137, f'({number})')
+        for number, (left, right) in enumerate(zip(secondary_edges, secondary_edges[1:]), start=10):
+            _insert_centered(page, (left + right) / 2, secondary_anchor_y, f'({number})')
+        if draw_grid:
+            for x in [10, *primary_edges]:
+                page.draw_line(fitz.Point(x, 112), fitz.Point(x, 260), width=0.5)
+            for x in [10, *secondary_edges]:
+                page.draw_line(
+                    fitz.Point(x, secondary_anchor_y - 45),
+                    fitz.Point(x, secondary_anchor_y + 125), width=0.5,
+                )
+
+        primary_values = [
+            'BUDI SANTOSO', '3311111111111112', 'LAKI-LAKI', 'DEMAK',
+            '01-01-1980', 'ISLAM', 'SMA', 'PETANI', 'O',
         ]
-        secondary = [
-            (16, '1'), (29, 'KAWIN TERCATAT'), (111, '01-01-2000'),
-            (162, 'KEPALA KELUARGA'), (260, 'WNI'), (337, '-'),
-            (403, '-'), (468, 'SUGENG'), (642, 'SRI'),
+        secondary_values = [
+            first_marital_status, first_marriage_date, 'KEPALA KELUARGA',
+            'WNI', '-', '-', 'SUGENG', 'SRI',
         ]
-        for x, text in primary:
-            page.insert_text((x, 153), text, fontsize=6)
-        for x, text in secondary:
-            page.insert_text((x, 310), text, fontsize=6)
+        page.insert_text((16, 153), '1', fontsize=6)
+        for left, text in zip(primary_edges, primary_values):
+            page.insert_text((left + 3, 153), text, fontsize=6)
+        page.insert_text((16, secondary_anchor_y + 16), '1', fontsize=6)
+        for left, text in zip(secondary_edges, secondary_values):
+            if text:
+                page.insert_text((left + 3, secondary_anchor_y + 16), text, fontsize=6)
         if include_second_member:
-            for x, text in [(16, '2'), (29, 'ANI SANTOSO'), (206, '3311111111111113'), (285, 'PEREMPUAN'), (326, 'DEMAK'), (426, '02-02-2005'), (468, 'ISLAM'), (521, 'SMA'), (642, 'PELAJAR'), (788, 'A')]:
-                page.insert_text((x, 164), text, fontsize=6)
+            page.insert_text((16, 164), '2', fontsize=6)
+            values = ['ANI SANTOSO', '3311111111111113', 'PEREMPUAN', 'DEMAK', '02-02-2005', 'ISLAM', 'SMA', 'PELAJAR', 'A']
+            for left, text in zip(primary_edges, values):
+                page.insert_text((left + 3, 164), text, fontsize=6)
         if include_second_member and not missing_secondary_row:
-            for x, text in [(16, '2'), (29, 'BELUM KAWIN'), (111, '-'), (162, 'ANAK'), (260, 'WNI'), (337, '-'), (403, '-'), (468, 'BUDI SANTOSO'), (642, 'SRI')]:
-                page.insert_text((x, 321), text, fontsize=6)
+            page.insert_text((16, secondary_anchor_y + 27), '2', fontsize=6)
+            values = ['BELUM KAWIN', '-', 'ANAK', 'WNI', '-', '-', 'BUDI SANTOSO', 'SRI']
+            for left, text in zip(secondary_edges, values):
+                page.insert_text((left + 3, secondary_anchor_y + 27), text, fontsize=6)
         # Preprinted empty slot must not become a resident.
-        for y in (175, 332):
+        for y in (175, secondary_anchor_y + 38):
             page.insert_text((16, y), '3', fontsize=6)
-            page.insert_text((29, y), '-', fontsize=6)
-            page.insert_text((206 if y == 175 else 162, y), '-', fontsize=6)
+            edges = primary_edges if y == 175 else secondary_edges
+            page.insert_text((edges[0] + 3, y), '-', fontsize=6)
+            page.insert_text((edges[1] + 3, y), '-', fontsize=6)
         # Even a text watermark is ignored; the supplied PDF uses an image.
         page.insert_text((400, 480), 'DRAFT', fontsize=20)
     data = document.tobytes()
@@ -74,7 +106,7 @@ def synthetic_kk_pdf(pages=1, include_text=True, missing_secondary_row=False, in
 def test_landscape_kk_maps_all_columns_and_skips_empty_slots():
     result = extract_pdf_document(synthetic_kk_pdf())
     header, members = result.bundle.header, result.bundle.members
-    assert result.metadata['parser'] == 'kk-landscape-v2'
+    assert result.metadata['parser'] == 'kk-landscape-v3'
     assert header.no_kk == '3311111111111111'
     assert header.nama_kepala_keluarga == 'BUDI SANTOSO'
     assert (header.rt, header.rw, header.kode_pos) == ('001', '002', '59511')
@@ -89,6 +121,48 @@ def test_landscape_kk_maps_all_columns_and_skips_empty_slots():
     assert members[1].nama_lengkap == 'ANI SANTOSO'
     assert validate_extraction(header, members, result.metadata['row_mismatches']) == []
     assert result.thumbnail_data
+
+
+@pytest.mark.parametrize('edges', [
+    [25, 200.8, 282, 324, 425, 467, 518, 640, 783, 841.9],
+    [25, 186.2, 276, 325, 420, 480, 530, 640, 780, 841.9],
+    [25, 153.5, 270, 330, 420, 480, 530, 640, 780, 841.9],
+    [25, 162.4, 268, 325, 410, 472, 525, 635, 778, 841.9],
+])
+def test_column_anchors_follow_autofit_widths_per_document(edges):
+    result = extract_pdf_document(synthetic_kk_pdf(primary_edges=edges))
+    assert result.bundle.members[0].nama_lengkap == 'BUDI SANTOSO'
+    assert result.bundle.members[0].nik == '3311111111111112'
+    assert result.bundle.members[0].tanggal_lahir.isoformat() == '1980-01-01'
+
+
+def test_vector_grid_uses_real_table_right_instead_of_page_edge():
+    primary_edges = [27.3, 186.2, 268, 309.9, 406.1, 455.2, 510.1, 635, 786.4, 829.3]
+    secondary_edges = [27.3, 109.1, 160.1, 258.3, 335.7, 401.2, 466.7, 627.2, 829.3]
+    result = extract_pdf_document(synthetic_kk_pdf(
+        primary_edges=primary_edges, secondary_edges=secondary_edges, draw_grid=True,
+    ))
+    member = result.bundle.members[0]
+    assert member.nama_lengkap == 'BUDI SANTOSO'
+    assert member.tanggal_lahir.isoformat() == '1980-01-01'
+    assert member.status_hubungan == 'KEPALA KELUARGA'
+    assert member.nama_ibu == 'SRI'
+
+
+def test_secondary_row_anchor_follows_three_line_heading_height():
+    result = extract_pdf_document(synthetic_kk_pdf(secondary_anchor_y=303))
+    assert len(result.bundle.members) == 2
+    assert result.bundle.members[0].status_hubungan == 'KEPALA KELUARGA'
+
+
+def test_empty_marriage_date_is_valid_for_unrecorded_marriage():
+    result = extract_pdf_document(synthetic_kk_pdf(
+        first_marital_status='KAWIN BELUM TERCATAT', first_marriage_date=None,
+    ))
+    member = result.bundle.members[0]
+    assert member.status_perkawinan == 'KAWIN BELUM TERCATAT'
+    assert member.status_hubungan == 'KEPALA KELUARGA'
+    assert validate_extraction(result.bundle.header, result.bundle.members, []) == []
 
 
 def test_missing_secondary_member_row_is_rejected():
@@ -129,7 +203,7 @@ def test_pdf_processing_records_native_attempt():
         attempt = session.scalar(select(ScanAttempt).where(ScanAttempt.scan_item_id == item_id))
         assert attempt.status == 'SUCCESS'
         assert attempt.provider == 'native_pdf'
-        assert attempt.model == 'pymupdf-kk-landscape-v2'
+        assert attempt.model == 'pymupdf-kk-landscape-v3'
     finally:
         session.close()
 

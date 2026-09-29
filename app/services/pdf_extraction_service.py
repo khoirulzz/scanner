@@ -18,21 +18,18 @@ from app.schemas.extraction import ExtractionBundle, HeaderExtraction, PrimaryEx
 from app.services.row_mapper import merge_rows
 
 
-# Cell boundaries are fractions of the landscape KK page width. The second
-# table contains marital status; the first table does not.
-_PRIMARY_COLUMNS = (
-    ('row', 0.000, 0.030), ('nama_lengkap', 0.030, 0.240),
-    ('nik', 0.240, 0.335), ('jenis_kelamin', 0.335, 0.385),
-    ('tempat_lahir', 0.385, 0.505), ('tanggal_lahir', 0.505, 0.555),
-    ('agama', 0.555, 0.615), ('pendidikan', 0.615, 0.760),
-    ('jenis_pekerjaan', 0.760, 0.930), ('golongan_darah', 0.930, 1.001),
+# The numbered tokens printed below the headings are the per-document source
+# of truth. Dukcapil's generator can autofit the columns and can move the
+# second table down when heading (11) wraps onto a third line.
+_PRIMARY_FIELDS = (
+    'nama_lengkap', 'nik', 'jenis_kelamin', 'tempat_lahir',
+    'tanggal_lahir', 'agama', 'pendidikan', 'jenis_pekerjaan',
+    'golongan_darah',
 )
-_SECONDARY_COLUMNS = (
-    ('row', 0.000, 0.030), ('status_perkawinan', 0.030, 0.130),
-    ('tanggal_perkawinan', 0.130, 0.190), ('status_hubungan', 0.190, 0.305),
-    ('kewarganegaraan', 0.305, 0.400), ('no_paspor', 0.400, 0.477),
-    ('no_kitas_kitap', 0.477, 0.555), ('nama_ayah', 0.555, 0.760),
-    ('nama_ibu', 0.760, 1.001),
+_SECONDARY_FIELDS = (
+    'status_perkawinan', 'tanggal_perkawinan', 'status_hubungan',
+    'kewarganegaraan', 'no_paspor', 'no_kitas_kitap', 'nama_ayah',
+    'nama_ibu',
 )
 
 
@@ -61,6 +58,13 @@ class NativePdfResult:
     metadata: dict
 
 
+@dataclass(frozen=True)
+class TableLayout:
+    anchor_y: float
+    first_column_left: float
+    columns: tuple[tuple[str, float, float], ...]
+
+
 def _normalise_value(value: str) -> str | None:
     value = re.sub(r'\s+', ' ', value).strip(' \t:|-')
     return value or None
@@ -77,6 +81,98 @@ def _words(page: fitz.Page) -> list[PdfWord]:
 def _cell(words: list[PdfWord], width: float, left: float, right: float) -> str | None:
     selected = [word for word in words if left <= word.x_center / width < right]
     return _normalise_value(' '.join(word.text for word in sorted(selected, key=lambda word: word.x0)))
+
+
+def _column_number(text: str) -> int | None:
+    match = re.fullmatch(r'\(\s*(\d{1,2})\s*\)', text.strip())
+    return int(match.group(1)) if match else None
+
+
+def _numbered_anchor_line(words: list[PdfWord], expected: range) -> list[PdfWord]:
+    expected_numbers = set(expected)
+    candidates = [word for word in words if _column_number(word.text) in expected_numbers]
+    matches: list[list[PdfWord]] = []
+    for candidate in candidates:
+        line = [word for word in candidates if abs(word.y_center - candidate.y_center) <= 3.0]
+        by_number = {_column_number(word.text): word for word in line}
+        if set(by_number) == expected_numbers:
+            matches.append([by_number[number] for number in expected])
+    if not matches:
+        raise ScannerError('PDF_TABLE_UNREADABLE', 'Nomor acuan kolom tabel KK tidak lengkap.')
+    anchors = min(matches, key=lambda line: max(word.y_center for word in line) - min(word.y_center for word in line))
+    if any(left.x_center >= right.x_center for left, right in zip(anchors, anchors[1:])):
+        raise ScannerError('PDF_TABLE_UNREADABLE', 'Urutan nomor acuan kolom tabel KK tidak konsisten.')
+    return anchors
+
+
+def _vertical_grid_boundaries(page: fitz.Page, y: float) -> list[float]:
+    """Return one x coordinate per vector grid line crossing ``y``."""
+    coordinates: list[float] = []
+    for drawing in page.get_drawings():
+        for item in drawing.get('items', ()):
+            if item[0] == 'l':
+                start, end = item[1], item[2]
+                if abs(start.x - end.x) <= 0.25 and min(start.y, end.y) - 0.5 <= y <= max(start.y, end.y) + 0.5:
+                    coordinates.append((start.x + end.x) / 2)
+            elif item[0] == 're':
+                rectangle = item[1]
+                if rectangle.y0 - 0.5 <= y <= rectangle.y1 + 0.5:
+                    coordinates.extend((rectangle.x0, rectangle.x1))
+    clusters: list[list[float]] = []
+    for coordinate in sorted(coordinates):
+        if not clusters or coordinate - clusters[-1][-1] > 2.0:
+            clusters.append([coordinate])
+        else:
+            clusters[-1].append(coordinate)
+    return [sum(cluster) / len(cluster) for cluster in clusters]
+
+
+def _table_layout(
+    page: fitz.Page, words: list[PdfWord], width: float,
+    expected: range, fields: tuple[str, ...],
+) -> TableLayout:
+    anchors = _numbered_anchor_line(words, expected)
+    anchor_y = sum(word.y_center for word in anchors) / len(anchors)
+
+    # Native Dukcapil PDFs contain vector grid lines. Numbered anchors identify
+    # which adjacent pair belongs to each field, while the grid supplies the
+    # exact edges (including the real table margin, which is not the page edge).
+    grid = _vertical_grid_boundaries(page, anchor_y)
+    grid_columns: list[tuple[str, float, float]] = []
+    for field, anchor in zip(fields, anchors):
+        left_candidates = [boundary for boundary in grid if boundary < anchor.x_center]
+        right_candidates = [boundary for boundary in grid if boundary > anchor.x_center]
+        if not left_candidates or not right_candidates:
+            grid_columns = []
+            break
+        grid_columns.append((field, max(left_candidates) / width, min(right_candidates) / width))
+    if len(grid_columns) == len(fields):
+        widths = [right - left for _, left, right in grid_columns]
+        aligned = all(
+            abs(grid_columns[index][2] - grid_columns[index + 1][1]) <= 0.003
+            for index in range(len(grid_columns) - 1)
+        )
+        if aligned and grid_columns[0][1] > 0 and all(cell_width > 0.012 for cell_width in widths):
+            return TableLayout(
+                anchor_y=anchor_y,
+                first_column_left=grid_columns[0][1],
+                columns=tuple(grid_columns),
+            )
+
+    # Every numbered token is horizontally centred in its own cell. Starting
+    # from the page edge, recover cell boundaries as a fallback for PDFs whose
+    # table grid is not represented by vector paths.
+    right = 1.0
+    reversed_columns: list[tuple[str, float, float]] = []
+    for field, anchor in reversed(list(zip(fields, anchors))):
+        left = (2 * anchor.x_center / width) - right
+        reversed_columns.append((field, left, right))
+        right = left
+    columns = tuple(reversed(reversed_columns))
+    widths = [column_right - column_left for _, column_left, column_right in columns]
+    if right <= 0 or right >= 0.10 or any(cell_width <= 0.012 for cell_width in widths):
+        raise ScannerError('PDF_TABLE_UNREADABLE', 'Lebar kolom hasil deteksi tidak masuk akal.')
+    return TableLayout(anchor_y=anchor_y, first_column_left=right, columns=columns)
 
 
 def _header(words: list[PdfWord], width: float, height: float) -> HeaderExtraction:
@@ -120,15 +216,33 @@ def _header(words: list[PdfWord], width: float, height: float) -> HeaderExtracti
     return HeaderExtraction(**values)
 
 
-def _table_rows(words: list[PdfWord], width: float, height: float, y1: float, y2: float, columns: tuple, primary: bool) -> list[dict]:
-    region = [word for word in words if y1 <= word.y_center / height <= y2]
-    markers = [word for word in region if word.x_center / width < 0.03 and re.fullmatch(r'(?:[1-9]|10)', word.text)]
+def _table_rows(
+    words: list[PdfWord], width: float, layout: TableLayout, primary: bool,
+    stop_y: float | None = None, expected_rows: set[int] | None = None,
+) -> list[dict]:
+    region = [
+        word for word in words
+        if word.y_center > layout.anchor_y + 2.0
+        and (stop_y is None or word.y_center < stop_y)
+    ]
+    markers = [
+        word for word in region
+        if word.x_center / width < layout.first_column_left
+        and re.fullmatch(r'(?:[1-9]|10)', word.text)
+        and (expected_rows is None or int(word.text) in expected_rows)
+    ]
+    if expected_rows is not None:
+        # Footer text can contain isolated numbers. The actual row marker is
+        # always the first matching number below the numbered header line.
+        first_marker: dict[int, PdfWord] = {}
+        for marker in sorted(markers, key=lambda word: word.y_center):
+            first_marker.setdefault(int(marker.text), marker)
+        markers = list(first_marker.values())
     rows: list[dict] = []
     for marker in sorted(markers, key=lambda word: word.y_center):
-        line = [word for word in region if abs(word.y_center - marker.y_center) <= 4.0]
-        values = {name: _cell(line, width, left, right) for name, left, right in columns}
-        if values['row'] != marker.text:
-            raise ScannerError('PDF_TABLE_UNREADABLE', 'Nomor baris tabel tidak konsisten.')
+        tolerance = max(4.0, (marker.y1 - marker.y0) * 0.65)
+        line = [word for word in region if abs(word.y_center - marker.y_center) <= tolerance]
+        values = {name: _cell(line, width, left, right) for name, left, right in layout.columns}
         values['row'] = int(marker.text)
         if primary:
             # Empty printable slots carry a row number and hyphens, but are not people.
@@ -142,18 +256,6 @@ def _table_rows(words: list[PdfWord], width: float, height: float, y1: float, y2
     if len(row_numbers) != len(set(row_numbers)):
         raise ScannerError('PDF_TABLE_UNREADABLE', 'Nomor baris tabel terduplikasi.')
     return rows
-
-
-def _matches_landscape_template(words: list[PdfWord], width: float, height: float) -> bool:
-    primary_heading = any(
-        word.text.upper() == 'NIK' and 0.26 <= word.x_center / width <= 0.34
-        and 0.17 <= word.y_center / height <= 0.22 for word in words
-    )
-    secondary_heading = any(
-        word.text.upper() == 'KEWARGANEGARAAN' and 0.30 <= word.x_center / width <= 0.41
-        and 0.43 <= word.y_center / height <= 0.49 for word in words
-    )
-    return primary_heading and secondary_heading
 
 
 def _thumbnail(page: fitz.Page) -> tuple[str, bytes]:
@@ -186,11 +288,18 @@ def extract_pdf_document(data: bytes) -> NativePdfResult:
         width, height = page.rect.width, page.rect.height
         if not 1.25 <= width / height <= 1.6:
             raise ScannerError('PDF_TABLE_UNREADABLE', 'Ukuran halaman tidak cocok dengan blanko KK.')
-        if not _matches_landscape_template(words, width, height):
-            raise ScannerError('PDF_TABLE_UNREADABLE', 'Susunan kolom tidak cocok dengan blanko KK.')
+        primary_layout = _table_layout(page, words, width, range(1, 10), _PRIMARY_FIELDS)
+        secondary_layout = _table_layout(page, words, width, range(10, 18), _SECONDARY_FIELDS)
+        if primary_layout.anchor_y >= secondary_layout.anchor_y:
+            raise ScannerError('PDF_TABLE_UNREADABLE', 'Urutan tabel anggota KK tidak konsisten.')
         header = _header(words, width, height)
-        primary = PrimaryExtraction(rows=_table_rows(words, width, height, 0.24, 0.43, _PRIMARY_COLUMNS, True))
-        secondary = SecondaryExtraction(rows=_table_rows(words, width, height, 0.50, 0.70, _SECONDARY_COLUMNS, False))
+        primary = PrimaryExtraction(rows=_table_rows(
+            words, width, primary_layout, True, stop_y=secondary_layout.anchor_y,
+        ))
+        primary_rows = {row.row for row in primary.rows}
+        secondary = SecondaryExtraction(rows=_table_rows(
+            words, width, secondary_layout, False, expected_rows=primary_rows,
+        ))
         if not primary.rows or {row.row for row in primary.rows} != {row.row for row in secondary.rows}:
             raise ScannerError('PDF_TABLE_UNREADABLE', 'Baris anggota pada kedua tabel tidak cocok.')
         members, mismatches = merge_rows(primary, secondary)
@@ -198,7 +307,7 @@ def extract_pdf_document(data: bytes) -> NativePdfResult:
         thumbnail_mime, thumbnail_data = _thumbnail(page)
         return NativePdfResult(
             bundle=bundle, thumbnail_mime=thumbnail_mime, thumbnail_data=thumbnail_data,
-            metadata={'source_type': 'native_pdf_text', 'parser': 'kk-landscape-v2', 'page_count': 1, 'word_count': len(words), 'row_mismatches': mismatches},
+            metadata={'source_type': 'native_pdf_text', 'parser': 'kk-landscape-v3', 'page_count': 1, 'word_count': len(words), 'row_mismatches': mismatches},
         )
     finally:
         document.close()

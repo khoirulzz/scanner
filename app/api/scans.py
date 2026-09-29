@@ -69,7 +69,7 @@ async def _process(item_id,file,db):
     if _existing_document(db, file_digest, item.id):
         item.file_hash=file_digest; item.original_size=len(data); item.optimized_size=len(data); item.status='FAILED'; item.failure_code='DUPLICATE_DOCUMENT'; item.failure_message=ERROR_MESSAGES['DUPLICATE_DOCUMENT']; db.commit(); return _serialize(_load(db,item.id))
     provider_name='native_pdf' if mime_type=='application/pdf' else settings.vision_provider
-    model_name='pymupdf-kk-landscape-v2' if mime_type=='application/pdf' else settings.vision_model
+    model_name='pymupdf-kk-landscape-v3' if mime_type=='application/pdf' else settings.vision_model
     attempt=ScanAttempt(scan_item_id=item.id,attempt_number=len(item.attempts)+1,provider=provider_name,model=model_name,status='PROCESSING'); db.add(attempt); db.flush(); item.current_attempt_id=attempt.id; item.status='PROCESSING'; item.file_hash=file_digest; item.original_size=len(data); item.optimized_size=len(data); db.commit(); started=time.perf_counter()
     try:
         if mime_type=='application/pdf':

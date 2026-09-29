@@ -19,7 +19,7 @@ Python deterministic row mapping + validation
 Human review → APPROVED → XLSX SID
 ```
 
-Prinsip ekstraksi adalah **TRANSCRIBE ONLY**: jangan menebak karakter, jangan memindahkan nilai antarbaris, dan return null jika tidak terbaca. Dua tabel anggota digabung berdasarkan nomor baris yang tercetak; slot kosong diabaikan. Profil parser saat ini dikalibrasi untuk PDF KK siap cetak satu halaman lanskap. Susunan lain ditolak agar kolom tidak bergeser diam-diam.
+Prinsip ekstraksi adalah **TRANSCRIBE ONLY**: jangan menebak karakter, jangan memindahkan nilai antarbaris, dan return null jika tidak terbaca. Dua tabel anggota digabung berdasarkan nomor baris yang tercetak; slot kosong diabaikan. Untuk setiap PDF KK siap cetak satu halaman lanskap, parser memasangkan token `(1)` sampai `(17)` dengan garis grid tabel dan nomor baris aktual, sehingga variasi autofit kolom, margin kanan tabel, dan tinggi header mengikuti struktur dokumen tersebut. Susunan lain ditolak agar kolom tidak bergeser diam-diam.
 
 ## Fitur V1
 
